@@ -202,7 +202,7 @@ class paynl
             $request->setServiceId($serviceId);
         }
 
-        $request->setAmount(Amount::fromFloat($orderTotal, DEFAULT_CURRENCY));
+        $request->setAmount(new Amount((int) round($orderTotal * 100), DEFAULT_CURRENCY));
         $request->setDescription('Order ' . $insert_id);
         $request->setPaymentMethodId((int) $this->payment_method_id);
 
@@ -231,8 +231,8 @@ class paynl
         $customer->setLastName(substr($order->delivery['lastname'], 0, 50));
         $customer->setEmail($order->customer['email_address']);
         $customer->setPhone($order->customer['telephone']);
-        $customer->setLanguage(strtoupper($_SESSION['languages_code'] ?? 'NL'));
-        $customer->setIpAddress($_SERVER['REMOTE_ADDR'] ?? '');
+        $customer->setLanguage(strtoupper(isset($_SESSION['languages_code']) ? $_SESSION['languages_code'] : 'NL'));
+        $customer->setIpAddress(isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '');
         $request->setCustomer($customer);
 
         // Order / addresses

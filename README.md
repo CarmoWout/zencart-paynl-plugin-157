@@ -12,7 +12,7 @@ Gebruikt de nieuwe [Pay. PHP SDK](https://github.com/paynl/php-sdk) (paynl/php-s
 | `Pay_Api_Start` (eigen CURL) | `OrderCreateRequest` (Pay. PHP SDK) |
 | `Pay_Api_Info` voor statuscheck | `OrderStatusRequest` (Pay. PHP SDK) |
 | `SERVICE_ID` + `API_TOKEN` | **AT-code** (username) + **API Token** (password) |
-| PHP 5.x / 7.x | **PHP 8.1+** |
+| PHP 8.1+ | **PHP 7.4+** |
 | Handmatige autoload klassen | Composer autoload |
 | `v3` REST-API direct | Actuele Pay. API via SDK |
 
@@ -107,6 +107,6 @@ De `method` parameter is de UPPERCASE beschrijving van de betaalmethode.
 ## Vereisten
 
 - Zencart 1.5.7d
-- PHP 8.1 of hoger
+- PHP 7.4 of hoger
 - Composer
 - `ext-curl` en `ext-json` PHP extensies

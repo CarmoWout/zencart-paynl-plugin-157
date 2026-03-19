@@ -12,8 +12,6 @@
  *   orderId   - Pay. order ID (set automatically by Pay.)
  */
 
-declare(strict_types=1);
-
 chdir('../../../../');
 require 'includes/application_top.php';
 
@@ -95,7 +93,7 @@ try {
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
         'SSL'
     ));
-} catch (Throwable $e) {
+} catch (Exception $e) {
     zen_redirect(zen_href_link(
         FILENAME_CHECKOUT_PAYMENT,
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),

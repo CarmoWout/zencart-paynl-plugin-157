@@ -15,8 +15,6 @@
  *   checksum - signature
  */
 
-declare(strict_types=1);
-
 // Go back to the Zencart root
 chdir('../../../../');
 require 'includes/application_top.php';
@@ -138,7 +136,7 @@ try {
             'SSL'
         ));
     }
-} catch (Throwable $e) {
+} catch (Exception $e) {
     if ($isExchange) {
         $exchange->setResponse(false, 'ERROR: ' . $e->getMessage());
     } else {
@@ -154,7 +152,7 @@ try {
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
 
-function isAlreadyPaid(string $transactionId): bool
+function isAlreadyPaid($transactionId)
 {
     global $db;
 
@@ -176,7 +174,7 @@ function isAlreadyPaid(string $transactionId): bool
     return (int)$result->fields['cnt'] > 0;
 }
 
-function updatePaynlTransaction(string $transactionId, string $status): void
+function updatePaynlTransaction($transactionId, $status)
 {
     global $db;
     $db->Execute(
@@ -186,7 +184,7 @@ function updatePaynlTransaction(string $transactionId, string $status): void
     );
 }
 
-function updateOrderStatus(string $method, int $orderId): void
+function updateOrderStatus($method, $orderId)
 {
     global $db;
 
@@ -215,7 +213,7 @@ function updateOrderStatus(string $method, int $orderId): void
     );
 }
 
-function deleteOrder(int $orderId): void
+function deleteOrder($orderId)
 {
     global $db;
 
@@ -231,7 +229,7 @@ function deleteOrder(int $orderId): void
     $db->Execute("DELETE FROM " . TABLE_ORDERS_PRODUCTS_DOWNLOAD  . " WHERE orders_id = " . $orderId);
 }
 
-function cleanSession(): void
+function cleanSession()
 {
     if (isset($_SESSION['cart'])) {
         $_SESSION['cart']->reset(true);
