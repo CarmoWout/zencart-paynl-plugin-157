@@ -1,0 +1,16 @@
+# Force LF line endings in the repository for all text files
+* text=auto eol=lf
+
+# PHP files
+*.php text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.zip binary
