@@ -2,31 +2,12 @@
 
 /**
  * Pay. payment module for Zencart 1.5.7d
- * Updated for the new Pay. PHP SDK (paynl/php-sdk ^1.2)
  *
- * Authentication: use AT-code as username + API Token as password.
- * The old SL-code (Service ID) is still stored for the payment method icon.
- *
- * Requires: composer require paynl/php-sdk
- * Autoload: DIR_WS_MODULES/payment/paynl/vendor/autoload.php
+ * Authentication: API Token + Service ID (SL-code).
+ * Uses the bundled Pay/ SDK classes (PHP 7.4 compatible).
  */
 
-$paynlVendorAutoload = dirname(__FILE__) . '/vendor/autoload.php';
-if (file_exists($paynlVendorAutoload)) {
-    require_once $paynlVendorAutoload;
-}
-
-use PayNL\Sdk\Model\Request\OrderCreateRequest;
-use PayNL\Sdk\Config\Config as PayNLConfig;
-use PayNL\Sdk\Model\Customer;
-use PayNL\Sdk\Model\Company;
-use PayNL\Sdk\Model\Address;
-use PayNL\Sdk\Model\Order as PayNLOrder;
-use PayNL\Sdk\Model\Products;
-use PayNL\Sdk\Model\Product;
-use PayNL\Sdk\Model\Stats;
-use PayNL\Sdk\Model\Amount;
-use PayNL\Sdk\Exception\PayException;
+require_once dirname(__FILE__) . '/Pay/Autoload.php';
 
 class paynl
 {
@@ -77,15 +58,15 @@ class paynl
         $this->payment_method_description = $payment_method_description;
 
         if ($this->enabled === true) {
-            // Require AT-code (username) and API Token (password)
-            $atCode   = defined('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_AT_CODE')
-                        ? constant('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_AT_CODE')
-                        : '';
-            $apiToken = defined('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_API_TOKEN')
-                        ? constant('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_API_TOKEN')
-                        : '';
+            // Require API Token and Service ID
+            $apiToken  = defined('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_API_TOKEN')
+                         ? constant('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_API_TOKEN')
+                         : '';
+            $serviceId = defined('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_SERVICE_ID')
+                         ? constant('MODULE_PAYMENT_PAYNL_' . $this->payment_method_description . '_SERVICE_ID')
+                         : '';
 
-            if (!zen_not_null($atCode) || !zen_not_null($apiToken)) {
+            if (!zen_not_null($apiToken) || !zen_not_null($serviceId)) {
                 $this->description = '<div class="secWarning">' . MODULE_PAYMENT_PAYNL_ERROR_ADMIN_CONFIGURATION . '</div>' . $this->description;
                 $this->enabled = false;
             }
@@ -182,132 +163,93 @@ class paynl
 
         $desc = $this->payment_method_description;
 
-        $atCode      = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_AT_CODE');
-        $apiToken    = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_API_TOKEN');
-        $serviceId   = defined('MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID')
-                       ? constant('MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID')
-                       : '';
-
-        $config = new PayNLConfig();
-        $config->setUsername($atCode);
-        $config->setPassword($apiToken);
+        $apiToken  = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_API_TOKEN');
+        $serviceId = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID');
 
         // Build order total in cents
         $orderTotal = (float) $this->format_raw($order->info['total']);
 
-        $request = new OrderCreateRequest();
-        $request->setConfig($config);
-
-        if ($serviceId) {
-            $request->setServiceId($serviceId);
-        }
-
-        $request->setAmount(new Amount((int) round($orderTotal * 100), DEFAULT_CURRENCY));
-        $request->setDescription('Order ' . $insert_id);
-        $request->setPaymentMethodId((int) $this->payment_method_id);
-
         // Return URL (customer lands here after payment)
-        $returnUrl    = $this->generateReturnURL('ext/modules/payment/paynl/return.php?method=' . $desc);
+        $returnUrl   = $this->generateReturnURL('ext/modules/payment/paynl/return.php?method=' . $desc);
         // Exchange URL (server-to-server webhook)
-        $exchangeUrl  = $this->generateReturnURL('ext/modules/payment/paynl/paynl_exchange.php?method=' . $desc);
+        $exchangeUrl = $this->generateReturnURL('ext/modules/payment/paynl/paynl_exchange.php?method=' . $desc);
 
-        $request->setReturnurl($returnUrl);
-        $request->setExchangeUrl($exchangeUrl);
-
-        // Stats / extra data
-        $stats = new Stats();
-        $stats->setExtra1((string) $insert_id);
-        $stats->setExtra2((string) $customer_id);
-        $stats->setObject('zencart 1.5.7d');
-        $stats->setTool('zencart-paynl-plugin');
-        $request->setStats($stats);
-
-        // Customer
+        // Split addresses
         $b_address = $this->splitAddress(trim($order->billing['street_address']));
         $d_address = $this->splitAddress(trim($order->delivery['street_address']));
 
-        $customer = new Customer();
-        $customer->setFirstName(substr($order->delivery['firstname'], 0, 50));
-        $customer->setLastName(substr($order->delivery['lastname'], 0, 50));
-        $customer->setEmail($order->customer['email_address']);
-        $customer->setPhone($order->customer['telephone']);
-        $customer->setLanguage(strtoupper(isset($_SESSION['languages_code']) ? $_SESSION['languages_code'] : 'NL'));
-        $customer->setIpAddress(isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '');
-        $request->setCustomer($customer);
-
-        // Order / addresses
-        $payOrder = new PayNLOrder();
-
-        $deliveryAddress = new Address();
-        $deliveryAddress->setCode('DEL');
-        $deliveryAddress->setStreetName($d_address[0]);
-        $deliveryAddress->setStreetNumber(substr($d_address[1], 0, 10));
-        $deliveryAddress->setZipCode($order->delivery['postcode']);
-        $deliveryAddress->setCity($order->delivery['city']);
-        $deliveryAddress->setCountryCode($order->delivery['country']['iso_code_2']);
-        $payOrder->setDeliveryAddress($deliveryAddress);
-
-        $invoiceAddress = new Address();
-        $invoiceAddress->setCode('INV');
-        $invoiceAddress->setStreetName($b_address[0]);
-        $invoiceAddress->setStreetNumber(substr($b_address[1], 0, 10));
-        $invoiceAddress->setZipCode($order->billing['postcode']);
-        $invoiceAddress->setCity($order->billing['city']);
-        $invoiceAddress->setCountryCode($order->billing['country']['iso_code_2']);
-        $payOrder->setInvoiceAddress($invoiceAddress);
-
-        // Products
-        $products = new Products();
-        foreach ($order->products as $product) {
-            list($productId) = explode(':', $product['id']);
-            $p = new Product();
-            $p->setId((string) $productId);
-            $p->setDescription(substr($product['name'], 0, 100));
-            $p->setType(Product::TYPE_ARTICLE);
-            $p->setAmount((float) $product['final_price']);
-            $p->setCurrency(DEFAULT_CURRENCY);
-            $p->setQuantity((int) $product['qty']);
-            $p->setVatPercentage(0);
-            $products->addProduct($p);
-        }
-
-        // Shipping
-        if ($order->info['shipping_cost'] > 0) {
-            $ship = new Product();
-            $ship->setId('shipcost');
-            $ship->setDescription(substr($order->info['shipping_method'], 0, 100));
-            $ship->setType(Product::TYPE_SHIPPING);
-            $ship->setAmount((float) $order->info['shipping_cost']);
-            $ship->setCurrency(DEFAULT_CURRENCY);
-            $ship->setQuantity(1);
-            $ship->setVatPercentage(0);
-            $products->addProduct($ship);
-        }
-
-        // Tax lines
-        $countTaxes = 1;
-        foreach ($order->info['tax_groups'] as $tax_name => $tax_cost) {
-            if ($tax_cost > 0) {
-                $tax = new Product();
-                $tax->setId('tax' . $countTaxes);
-                $tax->setDescription(substr($tax_name, 0, 100));
-                $tax->setType(Product::TYPE_HANDLING);
-                $tax->setAmount((float) $tax_cost);
-                $tax->setCurrency(DEFAULT_CURRENCY);
-                $tax->setQuantity(1);
-                $tax->setVatPercentage(0);
-                $products->addProduct($tax);
-            }
-            $countTaxes++;
-        }
-
-        $payOrder->setProducts($products);
-        $request->setOrder($payOrder);
-
         try {
-            $payResult = $request->start();
-            $orderId   = $payResult->getOrderId();
-            $payUrl    = $payResult->getPaymentUrl();
+            $paynlService = new Pay_Api_Start();
+            $paynlService->setApiToken($apiToken);
+            $paynlService->setServiceId($serviceId);
+
+            $paynlService->setAmount((int) round($orderTotal * 100));
+            $paynlService->setCurrency(DEFAULT_CURRENCY);
+            $paynlService->setPaymentOptionId((int) $this->payment_method_id);
+            $paynlService->setDescription('Order ' . $insert_id);
+            $paynlService->setOrderNumber((string) $insert_id);
+
+            $paynlService->setFinishUrl($returnUrl);
+            $paynlService->setExchangeUrl($exchangeUrl);
+
+            // Stats / tracing data
+            $paynlService->setExtra1((string) $insert_id);
+            $paynlService->setExtra2((string) $customer_id);
+            $paynlService->setObject('zencart 1.5.7d');
+
+            // Enduser data
+            $lang = isset($_SESSION['languages_code']) ? strtoupper($_SESSION['languages_code']) : 'NL';
+            $paynlService->setEnduser([
+                'initials'     => substr($order->delivery['firstname'], 0, 1),
+                'lastName'     => substr($order->delivery['lastname'], 0, 50),
+                'language'     => $lang,
+                'emailAddress' => $order->customer['email_address'],
+                'phoneNumber'  => $order->customer['telephone'],
+                'address'      => [
+                    'streetName'   => substr($d_address[0], 0, 50),
+                    'streetNumber' => substr($d_address[1], 0, 10),
+                    'zipCode'      => $order->delivery['postcode'],
+                    'city'         => $order->delivery['city'],
+                    'countryCode'  => $order->delivery['country']['iso_code_2'],
+                ],
+                'invoiceAddress' => [
+                    'initials'     => substr($order->billing['firstname'], 0, 1),
+                    'lastname'     => substr($order->billing['lastname'], 0, 50),
+                    'streetName'   => substr($b_address[0], 0, 50),
+                    'streetNumber' => substr($b_address[1], 0, 10),
+                    'zipCode'      => $order->billing['postcode'],
+                    'city'         => $order->billing['city'],
+                    'countryCode'  => $order->billing['country']['iso_code_2'],
+                ],
+            ]);
+
+            // Products
+            foreach ($order->products as $product) {
+                list($productId) = explode(':', $product['id']);
+                $price = (int) round((float) $product['final_price'] * 100);
+                $paynlService->addProduct(
+                    (string) $productId,
+                    substr($product['name'], 0, 45),
+                    $price,
+                    (int) $product['qty'],
+                    'H'
+                );
+            }
+
+            // Shipping
+            if ($order->info['shipping_cost'] > 0) {
+                $paynlService->addProduct(
+                    'shipcost',
+                    substr($order->info['shipping_method'], 0, 45),
+                    (int) round((float) $order->info['shipping_cost'] * 100),
+                    1,
+                    'H'
+                );
+            }
+
+            $result    = $paynlService->doRequest();
+            $orderId   = $result['transaction']['transactionId'];
+            $payUrl    = $result['transaction']['paymentURL'];
 
             $this->insertPaynlTransaction(
                 $orderId,
@@ -318,7 +260,7 @@ class paynl
 
             zen_redirect($payUrl);
 
-        } catch (PayException $e) {
+        } catch (Pay_Exception $e) {
             zen_redirect(zen_href_link(
                 FILENAME_CHECKOUT_PAYMENT,
                 'payment_error=' . $this->code . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
@@ -474,17 +416,13 @@ class paynl
                 'value'    => 'True',
                 'set_func' => "zen_cfg_select_option(array('True', 'False'), ",
             ],
-            'MODULE_PAYMENT_PAYNL_' . $desc . '_AT_CODE' => [
-                'title' => 'AT-code (username)',
-                'desc'  => 'Your Pay. AT-code, e.g. AT-####-####. Found in the Pay. dashboard under My Account.',
-            ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_API_TOKEN' => [
-                'title' => 'API Token (password)',
+                'title' => 'API Token',
                 'desc'  => 'Your Pay. API token. Found in the Pay. dashboard under My Account.',
             ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID' => [
-                'title' => 'Service ID / SL-code (optional)',
-                'desc'  => 'Your Pay. SL-code, e.g. SL-####-####. Used to identify the sales location. Leave empty to use the AT-code default.',
+                'title' => 'Service ID (SL-code)',
+                'desc'  => 'Your Pay. SL-code, e.g. SL-####-####. Found in the Pay. dashboard under Programs.',
             ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_ORDER_STATUS_ID' => [
                 'title'    => 'Pending order status',
