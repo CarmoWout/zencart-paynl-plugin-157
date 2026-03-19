@@ -1,0 +1,20 @@
+{
+    "name": "paynl/zencart-paynl-plugin-157",
+    "description": "Pay. payment plugin for Zencart 1.5.7d using the new Pay. PHP SDK (paynl/php-sdk ^1.2)",
+    "keywords": ["paynl", "pay", "zencart", "payment", "ideal", "zencart-157"],
+    "homepage": "https://github.com/CarmoWout/zencart-paynl-plugin-157",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "CarmoWout"
+        }
+    ],
+    "type": "library",
+    "require": {
+        "php": "^8.1",
+        "paynl/php-sdk": "^1.2"
+    },
+    "config": {
+        "vendor-dir": "includes/modules/payment/paynl/vendor"
+    }
+}

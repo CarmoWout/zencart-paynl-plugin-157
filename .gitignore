@@ -1,0 +1,12 @@
+# Composer vendor directory (run: composer install)
+includes/modules/payment/paynl/vendor/
+composer.lock
+
+# IDE / OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# PHP error logs
+*.log
