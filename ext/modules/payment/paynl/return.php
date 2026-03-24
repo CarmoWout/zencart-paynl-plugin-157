@@ -16,6 +16,7 @@ chdir('../../../../');
 require 'includes/application_top.php';
 
 require_once DIR_WS_MODULES . 'payment/paynl/Pay/Autoload.php';
+require_once DIR_WS_MODULES . 'payment/paynl/Pay/Log.php';
 
 $method     = isset($_REQUEST['method'])
     ? strtoupper(preg_replace('/[^A-Z0-9_]/', '', strtoupper($_REQUEST['method'])))
@@ -37,6 +38,8 @@ if (!$apiToken || !$serviceId) {
     zen_redirect(zen_href_link(FILENAME_CHECKOUT_PAYMENT, 'payment_error=paynl&error=credentials+missing', 'SSL'));
 }
 
+paynl_log($method, 'return', 'Customer return', ['orderId' => $payOrderId]);
+
 try {
     $paynlInfo = new Pay_Api_Info();
     $paynlInfo->setApiToken($apiToken);
@@ -46,6 +49,12 @@ try {
     $result    = $paynlInfo->doRequest();
     $stateCode = (int) $result['paymentDetails']['state'];
     $stateText = Pay_Helper::getStateText($stateCode);
+
+    paynl_log($method, 'return', 'Status fetched', [
+        'orderId'   => $payOrderId,
+        'stateCode' => $stateCode,
+        'stateText' => $stateText,
+    ]);
 
     if ($stateText === 'PAID') {
         // Confirm payment and clean up
@@ -82,12 +91,20 @@ try {
     }
 
 } catch (Pay_Exception $e) {
+    paynl_log($method, 'return', 'Pay_Exception: ' . $e->getMessage(), [
+        'orderId' => $payOrderId,
+        'trace'   => $e->getTraceAsString(),
+    ], 'ERROR');
     zen_redirect(zen_href_link(
         FILENAME_CHECKOUT_PAYMENT,
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
         'SSL'
     ));
 } catch (Exception $e) {
+    paynl_log($method, 'return', 'Exception: ' . $e->getMessage(), [
+        'orderId' => $payOrderId,
+        'trace'   => $e->getTraceAsString(),
+    ], 'ERROR');
     zen_redirect(zen_href_link(
         FILENAME_CHECKOUT_PAYMENT,
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),

@@ -227,6 +227,71 @@ class Pay_Api_Start extends Pay_Api {
 
 
   /**
+   * Bepaal het echte client-IP adres.
+   *
+   * Achter een reverse proxy staat REMOTE_ADDR op het proxy-IP.
+   * HTTP_X_FORWARDED_FOR bevat dan een kommalijst:
+   *   <client-ip>, <proxy1>, <proxy2>, ...
+   * We nemen het eerste publieke IP uit die lijst.
+   * Als er geen geldig publiek IP gevonden wordt, vallen we terug op REMOTE_ADDR.
+   *
+   * @return string
+   */
+  protected static function _getClientIp()
+  {
+    $candidates = array();
+
+    // X-Forwarded-For: meest linkse entry is het originele client-IP
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+      foreach (explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']) as $ip) {
+        $candidates[] = trim($ip);
+      }
+    }
+
+    // CF-Connecting-IP (Cloudflare)
+    if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+      array_unshift($candidates, trim($_SERVER['HTTP_CF_CONNECTING_IP']));
+    }
+
+    // True-Client-IP (Akamai / Cloudflare Enterprise)
+    if (!empty($_SERVER['HTTP_TRUE_CLIENT_IP'])) {
+      array_unshift($candidates, trim($_SERVER['HTTP_TRUE_CLIENT_IP']));
+    }
+
+    // Altijd ook REMOTE_ADDR als laatste optie
+    $candidates[] = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+
+    foreach ($candidates as $ip) {
+      if (self::_isPublicIp($ip)) {
+        return $ip;
+      }
+    }
+
+    // Noodoplossing: geef REMOTE_ADDR terug ook al is het privé
+    return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '127.0.0.1';
+  }
+
+  /**
+   * Controleer of een IP een geldig, publiek (niet-privé, niet-gereserveerd) adres is.
+   *
+   * @param string $ip
+   * @return bool
+   */
+  protected static function _isPublicIp($ip)
+  {
+    if (empty($ip)) {
+      return false;
+    }
+
+    // filter_var valideert IPv4 en IPv6, en sluit privé/gereserveerde ranges uit
+    return filter_var(
+      $ip,
+      FILTER_VALIDATE_IP,
+      FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
+    ) !== false;
+  }
+
+  /**
    * Get the post data, if not all required variables are set, this wil rthrow an exception
    *
    * @return array
@@ -279,7 +344,7 @@ class Pay_Api_Start extends Pay_Api {
     }
 
 
-    $data['ipAddress'] = $_SERVER['REMOTE_ADDR'];
+    $data['ipAddress'] = self::_getClientIp();
 
     // I set the browser data with dummydata, because most servers dont have the get_browser function available
     $data['browserData'] = array(

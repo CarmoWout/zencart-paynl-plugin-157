@@ -20,6 +20,7 @@ require 'includes/application_top.php';
 
 // Load Pay. SDK classes
 require_once DIR_WS_MODULES . 'payment/paynl/Pay/Autoload.php';
+require_once DIR_WS_MODULES . 'payment/paynl/Pay/Log.php';
 
 $method = isset($_REQUEST['method'])
     ? strtoupper(preg_replace('/[^A-Z0-9_]/', '', strtoupper($_REQUEST['method'])))
@@ -62,6 +63,12 @@ if (!$transactionId) {
     exit;
 }
 
+paynl_log($method, 'exchange', 'Incoming call', [
+    'isExchange'    => $isExchange,
+    'transactionId' => $transactionId,
+    'action'        => isset($_POST['action']) ? $_POST['action'] : '',
+]);
+
 try {
     $paynlInfo = new Pay_Api_Info();
     $paynlInfo->setApiToken($apiToken);
@@ -73,6 +80,13 @@ try {
     $stateCode = (int) $result['paymentDetails']['state'];
     $stateText = Pay_Helper::getStateText($stateCode);
     $zcOrderId = isset($result['statsDetails']['extra1']) ? (int) $result['statsDetails']['extra1'] : 0;
+
+    paynl_log($method, 'exchange', 'Transaction status fetched', [
+        'transactionId' => $transactionId,
+        'stateCode'     => $stateCode,
+        'stateText'     => $stateText,
+        'zcOrderId'     => $zcOrderId,
+    ]);
 
     if ($stateText === 'PENDING') {
 
@@ -142,6 +156,11 @@ try {
     }
 
 } catch (Pay_Exception $e) {
+    paynl_log($method, 'exchange', 'Pay_Exception: ' . $e->getMessage(), [
+        'transactionId' => $transactionId,
+        'isExchange'    => $isExchange,
+        'trace'         => $e->getTraceAsString(),
+    ], 'ERROR');
     if ($isExchange) {
         echo 'FALSE|ERROR: ' . $e->getMessage();
     } else {
@@ -152,6 +171,11 @@ try {
         ));
     }
 } catch (Exception $e) {
+    paynl_log($method, 'exchange', 'Exception: ' . $e->getMessage(), [
+        'transactionId' => $transactionId,
+        'isExchange'    => $isExchange,
+        'trace'         => $e->getTraceAsString(),
+    ], 'ERROR');
     if ($isExchange) {
         echo 'FALSE|ERROR: ' . $e->getMessage();
     } else {

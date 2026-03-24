@@ -8,6 +8,7 @@
  */
 
 require_once dirname(__FILE__) . '/Pay/Autoload.php';
+require_once dirname(__FILE__) . '/Pay/Log.php';
 
 class paynl
 {
@@ -178,6 +179,14 @@ class paynl
         $b_address = $this->splitAddress(trim($order->billing['street_address']));
         $d_address = $this->splitAddress(trim($order->delivery['street_address']));
 
+        paynl_log($desc, 'after_process', 'Starting Pay. transaction', [
+            'order_id'   => $insert_id,
+            'amount_cts' => (int) round($orderTotal * 100),
+            'method_id'  => $this->payment_method_id,
+            'returnUrl'  => $returnUrl,
+            'exchangeUrl'=> $exchangeUrl,
+        ]);
+
         try {
             $paynlService = new Pay_Api_Start();
             $paynlService->setApiToken($apiToken);
@@ -251,6 +260,12 @@ class paynl
             $orderId   = $result['transaction']['transactionId'];
             $payUrl    = $result['transaction']['paymentURL'];
 
+            paynl_log($desc, 'after_process', 'Transaction started OK', [
+                'transactionId' => $orderId,
+                'paymentURL'    => $payUrl,
+                'order_id'      => $insert_id,
+            ]);
+
             $this->insertPaynlTransaction(
                 $orderId,
                 $this->payment_method_id,
@@ -261,12 +276,22 @@ class paynl
             zen_redirect($payUrl);
 
         } catch (Pay_Exception $e) {
+            paynl_log($desc, 'after_process', 'Pay_Exception: ' . $e->getMessage(), [
+                'order_id' => $insert_id,
+                'trace'    => $e->getTraceAsString(),
+            ], 'ERROR');
+            $this->sendDebugEmail(['exception' => $e->getMessage(), 'order_id' => $insert_id]);
             zen_redirect(zen_href_link(
                 FILENAME_CHECKOUT_PAYMENT,
                 'payment_error=' . $this->code . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
                 'SSL'
             ));
         } catch (Exception $e) {
+            paynl_log($desc, 'after_process', 'Exception: ' . $e->getMessage(), [
+                'order_id' => $insert_id,
+                'trace'    => $e->getTraceAsString(),
+            ], 'ERROR');
+            $this->sendDebugEmail(['exception' => $e->getMessage(), 'order_id' => $insert_id]);
             zen_redirect(zen_href_link(
                 FILENAME_CHECKOUT_PAYMENT,
                 'payment_error=' . $this->code . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
@@ -448,6 +473,12 @@ class paynl
             'MODULE_PAYMENT_PAYNL_' . $desc . '_DEBUG_EMAIL' => [
                 'title' => 'Debug e-mail address',
                 'desc'  => 'All parameters of a failed transaction are sent here.',
+            ],
+            'MODULE_PAYMENT_PAYNL_' . $desc . '_DEBUG_LOG' => [
+                'title'    => 'Enable debug logging',
+                'desc'     => 'Write debug info to DIR_FS_LOGS/paynl_YYYY-MM-DD.log. Errors are always logged.',
+                'value'    => 'False',
+                'set_func' => "zen_cfg_select_option(array('True', 'False'), ",
             ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_SORT_ORDER' => [
                 'title' => 'Sort order of display',
