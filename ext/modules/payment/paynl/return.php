@@ -4,7 +4,7 @@
  * Pay. return URL handler for Zencart 1.5.7d
  *
  * The customer is redirected back here after completing (or cancelling) the
- * payment on the Pay. page.  We fetch the order status via the SDK and
+ * payment on the Pay. page.  We fetch the order status via Pay_Api_Info and
  * redirect the customer to the appropriate Zencart page.
  *
  * URL parameters:
@@ -12,51 +12,51 @@
  *   orderId   - Pay. order ID (set automatically by Pay.)
  */
 
-declare(strict_types=1);
-
 chdir('../../../../');
 require 'includes/application_top.php';
 
-$paynlAutoload = DIR_WS_MODULES . 'payment/paynl/vendor/autoload.php';
-if (!file_exists($paynlAutoload)) {
-    die('Pay. SDK autoloader not found. Run: composer require paynl/php-sdk');
-}
-require_once $paynlAutoload;
+require_once DIR_WS_MODULES . 'payment/paynl/Pay/Autoload.php';
+require_once DIR_WS_MODULES . 'payment/paynl/Pay/Log.php';
 
-use PayNL\Sdk\Model\Request\OrderStatusRequest;
-use PayNL\Sdk\Config\Config as PayNLConfig;
-use PayNL\Sdk\Exception\PayException;
-
-$method    = isset($_REQUEST['method']) ? strtoupper(preg_replace('/[^A-Z0-9_]/', '', strtoupper($_REQUEST['method']))) : '';
-$payOrderId = $_REQUEST['orderId'] ?? '';
+$method     = isset($_REQUEST['method'])
+    ? strtoupper(preg_replace('/[^A-Z0-9_]/', '', strtoupper($_REQUEST['method'])))
+    : '';
+$payOrderId = isset($_REQUEST['orderId']) ? $_REQUEST['orderId'] : '';
 
 if (!$method || !$payOrderId) {
     zen_redirect(zen_href_link(FILENAME_CHECKOUT_PAYMENT, 'payment_error=paynl&error=missing+parameters', 'SSL'));
 }
 
-$atCode   = defined('MODULE_PAYMENT_PAYNL_' . $method . '_AT_CODE')
-            ? constant('MODULE_PAYMENT_PAYNL_' . $method . '_AT_CODE')
-            : '';
-$apiToken = defined('MODULE_PAYMENT_PAYNL_' . $method . '_API_TOKEN')
-            ? constant('MODULE_PAYMENT_PAYNL_' . $method . '_API_TOKEN')
-            : '';
+$apiToken  = defined('MODULE_PAYMENT_PAYNL_' . $method . '_API_TOKEN')
+             ? constant('MODULE_PAYMENT_PAYNL_' . $method . '_API_TOKEN')
+             : '';
+$serviceId = defined('MODULE_PAYMENT_PAYNL_' . $method . '_SERVICE_ID')
+             ? constant('MODULE_PAYMENT_PAYNL_' . $method . '_SERVICE_ID')
+             : '';
 
-if (!$atCode || !$apiToken) {
+if (!$apiToken || !$serviceId) {
     zen_redirect(zen_href_link(FILENAME_CHECKOUT_PAYMENT, 'payment_error=paynl&error=credentials+missing', 'SSL'));
 }
 
-$config = new PayNLConfig();
-$config->setUsername($atCode);
-$config->setPassword($apiToken);
+paynl_log($method, 'return', 'Customer return', ['orderId' => $payOrderId]);
 
 try {
-    $request  = new OrderStatusRequest($payOrderId);
-    $request->setConfig($config);
-    $payOrder = $request->start();
+    $paynlInfo = new Pay_Api_Info();
+    $paynlInfo->setApiToken($apiToken);
+    $paynlInfo->setServiceId($serviceId);
+    $paynlInfo->setTransactionId($payOrderId);
 
-    $zcOrderId = (int) $payOrder->getExtra1();
+    $result    = $paynlInfo->doRequest();
+    $stateCode = (int) $result['paymentDetails']['state'];
+    $stateText = Pay_Helper::getStateText($stateCode);
 
-    if ($payOrder->isPaid() || $payOrder->isAuthorized()) {
+    paynl_log($method, 'return', 'Status fetched', [
+        'orderId'   => $payOrderId,
+        'stateCode' => $stateCode,
+        'stateText' => $stateText,
+    ]);
+
+    if ($stateText === 'PAID') {
         // Confirm payment and clean up
         if (isset($_SESSION['cart'])) {
             $_SESSION['cart']->reset(true);
@@ -64,7 +64,7 @@ try {
         unset($_SESSION['sendto'], $_SESSION['billto'], $_SESSION['shipping'], $_SESSION['payment'], $_SESSION['comments']);
         zen_redirect(zen_href_link(FILENAME_CHECKOUT_SUCCESS));
 
-    } elseif ($payOrder->isCancelled()) {
+    } elseif ($stateText === 'CANCEL') {
         zen_redirect(zen_href_link(
             FILENAME_CHECKOUT_PAYMENT,
             'payment_error=' . urlencode(strtolower($method)) . '&error=Payment+cancelled',
@@ -73,12 +73,13 @@ try {
             false
         ));
 
-    } elseif ($payOrder->isPending()) {
+    } elseif ($stateText === 'PENDING' || $stateText === 'CHECKAMOUNT') {
         // Still pending – the exchange will update the order status later
         // Redirect to checkout success so the customer sees a confirmation page
         if (isset($_SESSION['cart'])) {
             $_SESSION['cart']->reset(true);
         }
+        unset($_SESSION['sendto'], $_SESSION['billto'], $_SESSION['shipping'], $_SESSION['payment'], $_SESSION['comments']);
         zen_redirect(zen_href_link(FILENAME_CHECKOUT_SUCCESS));
 
     } else {
@@ -89,13 +90,21 @@ try {
         ));
     }
 
-} catch (PayException $e) {
+} catch (Pay_Exception $e) {
+    paynl_log($method, 'return', 'Pay_Exception: ' . $e->getMessage(), [
+        'orderId' => $payOrderId,
+        'trace'   => $e->getTraceAsString(),
+    ], 'ERROR');
     zen_redirect(zen_href_link(
         FILENAME_CHECKOUT_PAYMENT,
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
         'SSL'
     ));
-} catch (Throwable $e) {
+} catch (Exception $e) {
+    paynl_log($method, 'return', 'Exception: ' . $e->getMessage(), [
+        'orderId' => $payOrderId,
+        'trace'   => $e->getTraceAsString(),
+    ], 'ERROR');
     zen_redirect(zen_href_link(
         FILENAME_CHECKOUT_PAYMENT,
         'payment_error=' . urlencode(strtolower($method)) . '&error=paynl&paynlErrorMessage=' . urlencode($e->getMessage()),
