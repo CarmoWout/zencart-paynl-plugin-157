@@ -8,6 +8,7 @@ class Pay_Api_Start extends Pay_Api {
   protected $_version = 'v3';
   protected $_controller = 'transaction';
   protected $_action = 'start';
+  private $_testMode = false;
   private $_amount;
   private $_currency;
   private $_paymentOptionId;
@@ -27,6 +28,11 @@ class Pay_Api_Start extends Pay_Api {
   private $_domainId;
   private $_transferData;
   private $_products = array();
+
+  public function setTestMode($testMode)
+  {
+    $this->_testMode = (bool)$testMode;
+  }
 
   public function setCurrency($currency)
   {
@@ -398,6 +404,10 @@ class Pay_Api_Start extends Pay_Api {
     }
     if (!empty($this->_transferData)) {
       $data['statsData']['transferData'] = $this->_transferData;
+    }
+
+    if ($this->_testMode) {
+      $data['integration']['testMode'] = 1;
     }
 
     return $data;
