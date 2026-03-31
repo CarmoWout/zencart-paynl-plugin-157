@@ -10,6 +10,13 @@
 require_once dirname(__FILE__) . '/Pay/Autoload.php';
 require_once dirname(__FILE__) . '/Pay/Log.php';
 
+// Global test mode switch for ALL Pay. payment methods.
+// Set to 'True' to enable Pay. sandbox mode (sends integration.test=true).
+// Also set the Sales Location to Test mode in my.pay.nl -> Settings -> Sales location.
+if (!defined('PAYNL_GLOBAL_TEST_MODE')) {
+    define('PAYNL_GLOBAL_TEST_MODE', 'False');
+}
+
 class paynl
 {
     var $code, $title, $description, $enabled;
@@ -167,8 +174,7 @@ class paynl
         $apiToken  = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_API_TOKEN');
         $serviceId = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID');
 
-        $testMode = defined('MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE')
-                    && constant('MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE') === 'True';
+        $testMode = defined('PAYNL_GLOBAL_TEST_MODE') && PAYNL_GLOBAL_TEST_MODE === 'True';
 
         // Build order total in cents
         $orderTotal = (float) $this->format_raw($order->info['total']);
@@ -454,12 +460,6 @@ class paynl
             'MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID' => [
                 'title' => 'Service ID (SL-code)',
                 'desc'  => 'Your Pay. SL-code, e.g. SL-####-####. Found in the Pay. dashboard under Programs.',
-            ],
-            'MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE' => [
-                'title'    => 'Test mode (sandbox)',
-                'desc'     => 'Enable Pay. sandbox mode. Sends integration.test=true with every transaction. Use the Pay. dashboard (Settings > Sales location > Mode: Test) to activate the sandbox on your sales location.',
-                'value'    => 'False',
-                'set_func' => "zen_cfg_select_option(array('True', 'False'), ",
             ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_ORDER_STATUS_ID' => [
                 'title'    => 'Pending order status',
