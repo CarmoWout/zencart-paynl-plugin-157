@@ -57,7 +57,45 @@ try {
     ]);
 
     if ($stateText === 'PAID') {
-        // Confirm payment and clean up
+        // Update order status as fallback — the exchange (webhook) may not have
+        // arrived yet (e.g. sandbox, firewall, or timing). Safe to call twice
+        // because updateOrderStatus() only inserts a history row if needed.
+        $zcOrderId = isset($result['statsDetails']['extra1'])
+                     ? (int)$result['statsDetails']['extra1']
+                     : 0;
+
+        if ($zcOrderId > 0) {
+            $order_status_id = (
+                defined('MODULE_PAYMENT_PAYNL_' . $method . '_TRANSACTION_ORDER_STATUS_ID') &&
+                (int)constant('MODULE_PAYMENT_PAYNL_' . $method . '_TRANSACTION_ORDER_STATUS_ID') > 0
+            )
+                ? (int)constant('MODULE_PAYMENT_PAYNL_' . $method . '_TRANSACTION_ORDER_STATUS_ID')
+                : (int)DEFAULT_ORDERS_STATUS_ID;
+
+            // Only update if not already set to the paid status
+            $current = $db->Execute(
+                "SELECT orders_status FROM " . TABLE_ORDERS . " WHERE orders_id = " . $zcOrderId
+            );
+            if (!$current->EOF && (int)$current->fields['orders_status'] !== $order_status_id) {
+                $db->Execute(
+                    "UPDATE " . TABLE_ORDERS . "
+                     SET orders_status = " . $order_status_id . ", last_modified = NOW()
+                     WHERE orders_id = " . $zcOrderId
+                );
+                $db->Execute(
+                    "INSERT INTO " . TABLE_ORDERS_STATUS_HISTORY . "
+                        (orders_id, orders_status_id, date_added, customer_notified, comments)
+                     VALUES
+                        (" . $zcOrderId . ", " . $order_status_id . ", NOW(), 0, 'Pay. [PAID] via return URL')"
+                );
+                paynl_log($method, 'return', 'Order status updated via return URL (exchange fallback)', [
+                    'zcOrderId'       => $zcOrderId,
+                    'order_status_id' => $order_status_id,
+                ]);
+            }
+        }
+
+        // Clean up cart and session
         if (isset($_SESSION['cart'])) {
             $_SESSION['cart']->reset(true);
         }
