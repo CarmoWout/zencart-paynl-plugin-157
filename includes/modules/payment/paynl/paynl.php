@@ -167,6 +167,9 @@ class paynl
         $apiToken  = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_API_TOKEN');
         $serviceId = constant('MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID');
 
+        $testMode = defined('MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE')
+                    && constant('MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE') === 'True';
+
         // Build order total in cents
         $orderTotal = (float) $this->format_raw($order->info['total']);
 
@@ -191,6 +194,9 @@ class paynl
             $paynlService = new Pay_Api_Start();
             $paynlService->setApiToken($apiToken);
             $paynlService->setServiceId($serviceId);
+            if ($testMode) {
+                $paynlService->setTestMode(true);
+            }
 
             $paynlService->setAmount((int) round($orderTotal * 100));
             $paynlService->setCurrency(DEFAULT_CURRENCY);
@@ -448,6 +454,12 @@ class paynl
             'MODULE_PAYMENT_PAYNL_' . $desc . '_SERVICE_ID' => [
                 'title' => 'Service ID (SL-code)',
                 'desc'  => 'Your Pay. SL-code, e.g. SL-####-####. Found in the Pay. dashboard under Programs.',
+            ],
+            'MODULE_PAYMENT_PAYNL_' . $desc . '_TEST_MODE' => [
+                'title'    => 'Test mode (sandbox)',
+                'desc'     => 'Enable Pay. sandbox mode. Sends integration.test=true with every transaction. Use the Pay. dashboard (Settings > Sales location > Mode: Test) to activate the sandbox on your sales location.',
+                'value'    => 'False',
+                'set_func' => "zen_cfg_select_option(array('True', 'False'), ",
             ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_ORDER_STATUS_ID' => [
                 'title'    => 'Pending order status',
