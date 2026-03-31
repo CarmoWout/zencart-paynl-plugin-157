@@ -103,6 +103,37 @@ try {
         zen_redirect(zen_href_link(FILENAME_CHECKOUT_SUCCESS));
 
     } elseif ($stateText === 'CANCEL') {
+        // Set order status to cancelled (do NOT delete — customer may retry with another method)
+        $zcOrderId = isset($result['statsDetails']['extra1'])
+                     ? (int)$result['statsDetails']['extra1']
+                     : 0;
+
+        if ($zcOrderId > 0) {
+            $cancel_status_id = (
+                defined('MODULE_PAYMENT_PAYNL_' . $method . '_CANCEL_ORDER_STATUS_ID') &&
+                (int)constant('MODULE_PAYMENT_PAYNL_' . $method . '_CANCEL_ORDER_STATUS_ID') > 0
+            )
+                ? (int)constant('MODULE_PAYMENT_PAYNL_' . $method . '_CANCEL_ORDER_STATUS_ID')
+                : (int)DEFAULT_ORDERS_STATUS_ID;
+
+            $db->Execute(
+                "UPDATE " . TABLE_ORDERS . "
+                 SET orders_status = " . $cancel_status_id . ", last_modified = NOW()
+                 WHERE orders_id = " . $zcOrderId
+            );
+            $db->Execute(
+                "INSERT INTO " . TABLE_ORDERS_STATUS_HISTORY . "
+                    (orders_id, orders_status_id, date_added, customer_notified, comments)
+                 VALUES
+                    (" . $zcOrderId . ", " . $cancel_status_id . ", NOW(), 0, 'Pay. [CANCELLED] via return URL')"
+            );
+            paynl_log($method, 'return', 'Order status set to cancelled via return URL', [
+                'zcOrderId'        => $zcOrderId,
+                'cancel_status_id' => $cancel_status_id,
+            ]);
+        }
+
+        // Session stays intact so the customer can choose another payment method
         zen_redirect(zen_href_link(
             FILENAME_CHECKOUT_PAYMENT,
             'payment_error=' . urlencode(strtolower($method)) . '&error=Payment+cancelled',

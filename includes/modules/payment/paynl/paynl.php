@@ -475,6 +475,13 @@ class paynl
                 'use_func' => 'zen_get_order_status_name',
                 'set_func' => 'zen_cfg_pull_down_order_statuses(',
             ],
+            'MODULE_PAYMENT_PAYNL_' . $desc . '_CANCEL_ORDER_STATUS_ID' => [
+                'title'    => 'Cancelled order status',
+                'desc'     => 'Status for orders where the payment was cancelled or declined. Leave at 0 to use the default Zencart cancelled status.',
+                'value'    => '0',
+                'use_func' => 'zen_get_order_status_name',
+                'set_func' => 'zen_cfg_pull_down_order_statuses(',
+            ],
             'MODULE_PAYMENT_PAYNL_' . $desc . '_ZONE' => [
                 'title'    => 'Payment Zone',
                 'desc'     => 'If a zone is selected, only enable this payment method for that zone.',
